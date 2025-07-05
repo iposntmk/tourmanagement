@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="cupcake">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tour Management App - Modern UI</title>
+    
+    <!-- Frameworks & Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.2/dist/full.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" xintegrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Custom Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="app" class="max-w-4xl mx-auto pb-24">
+
+        <!-- Toast Notification Area -->
+        <div class="toast toast-top toast-end z-50">
+            <div v-for="t in toasts" :key="t.id" :class="['alert', t.type]">
+                <i :class="t.icon"></i>
+                <span>{{ t.message }}</span>
+            </div>
+        </div>
+
+        <!-- Main Header & Tabs -->
+        <header class="sticky-header">
+            <div class="p-4">
+                <h1 class="text-3xl font-bold text-base-content">Tour App</h1>
+                <p class="text-sm text-base-content/70">Quản lý tour du lịch chuyên nghiệp</p>
+            </div>
+            <div role="tablist" class="tabs tabs-bordered px-4">
+                <a role="tab" class="tab" @click="activeTab = 'tours'" :class="{'tab-active': activeTab === 'tours'}"><i class="fas fa-route mr-2"></i>QLT</a>
+                <a role="tab" class="tab" @click="activeTab = 'data'" :class="{'tab-active': activeTab === 'data'}"><i class="fas fa-database mr-2"></i>DLC</a>
+            </div>
+        </header>
+
+        <main class="p-4">
+            <!-- TOUR MANAGEMENT VIEW -->
+            <div v-if="activeTab === 'tours'">
+                <!-- Tour List View -->
+                <div v-if="!currentTour">
+                    <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                        <select v-model="filterMonth" class="select select-bordered sm:w-52">
+                            <option value="all">Tất cả tháng</option>
+                            <option v-for="month in 12" :value="month">{{ 'Tháng ' + month }}</option>
+                        </select>
+                        <button @click="showTourForm({})" class="btn btn-primary w-full sm:w-auto">
+                            <i class="fas fa-plus mr-2"></i>Thêm Tour
+                        </button>
+                        <div class="tooltip" :data-tip="filterMonth === 'all' ? 'Vui lòng chọn một tháng để xuất' : ''">
+                            <button @click="exportToExcel(filteredTours, `Tours_Thang_${filterMonth}`)" class="btn btn-accent w-full sm:w-auto" :disabled="filterMonth === 'all'">
+                                <i class="fas fa-file-excel mr-2"></i>Xuất Excel
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card bg-base-100 shadow-lg border border-base-200 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Cty / Mã Tour</th>
+                                        <th>NBD</th>
+                                        <th class="text-right">T.Tiền</th>
+                                    </tr>
+                                </thead>
+                                <tbody v-for="tour in filteredTours" :key="tour.id">
+                                    <tr class="hover tour-list-row">
+                                        <td>
+                                            <div class="font-bold">{{ getCompanyName(tour.companyId) }}</div>
+                                            <div class="text-sm opacity-60">{{ tour.id }}</div>
+                                        </td>
+                                        <td>{{ formatDate(tour.startDate) }}</td>
+                                        <td class="text-right font-mono font-semibold">{{ formatCurrencyWithK(grandTotalForTour(tour)) }}</td>
+                                    </tr>
+                                    <tr class="action-row">
+                                        <td colspan="3" class="p-2">
+                                            <div class="flex justify-end space-x-1">
+                                                <button @click="sendTourEmail(tour)" class="btn btn-ghost btn-sm btn-circle" title="Gửi Email"><i class="fas fa-paper-plane"></i></button>
+                                                <button @click="exportToExcel([tour], tour.id)" class="btn btn-ghost btn-sm btn-circle text-success" title="Xuất Excel"><i class="fas fa-file-excel"></i></button>
+                                                <button @click="copyTour(tour)" class="btn btn-ghost btn-sm btn-circle" title="Sao chép"><i class="fas fa-copy"></i></button>
+                                                <button @click="showTourForm(tour)" class="btn btn-ghost btn-sm btn-circle" title="Sửa"><i class="fas fa-pencil-alt"></i></button>
+                                                <button @click="deleteTour(tour.id)" class="btn btn-ghost btn-sm btn-circle text-error" title="Xóa"><i class="fas fa-trash-alt"></i></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                                 <tbody v-if="filteredTours.length === 0">
+                                    <tr>
+                                        <td colspan="3" class="text-center py-12 text-base-content/60">Chưa có tour nào để hiển thị.</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot v-if="filterMonth !== 'all' && filteredTours.length > 0">
+                                    <tr class="font-bold text-lg">
+                                        <td colspan="2">Tổng cộng tháng {{ filterMonth }}</td>
+                                        <td class="text-right font-mono">{{ formatCurrencyWithK(monthlyTotal) }}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tour Add/Edit Form View -->
+                <div v-if="currentTour">
+                    <h2 class="text-2xl font-bold mb-4">{{ currentTour.originalId ? 'Sửa Tour ' + currentTour.originalId : 'Tạo Tour Mới' }}</h2>
+                    
+                    <!-- TTC -->
+                    <div class="form-section">
+                        <div class="card-body space-y-4">
+                            <div class="grid grid-cols-1">
+                                 <div>
+                                    <label class="label py-0"><span class="label-text font-semibold">Mã Tour</span></label>
+                                    <input type="text" v-model="currentTour.id" class="input input-bordered" placeholder="Nhập mã tour (vd: HUI-001)">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="label py-0"><span class="label-text font-semibold">HDV</span></label>
+                                    <input type="text" v-model="currentTour.guide" class="input input-bordered">
+                                </div>
+                                <div>
+                                    <label class="label py-0"><span class="label-text font-semibold">QT</span></label>
+                                    <select v-model="currentTour.nationalityId" class="select select-bordered">
+                                        <option v-for="n in masterData.nationalities" :value="n.id">{{ n.name }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="label py-0"><span class="label-text font-semibold">Cty</span></label>
+                                    <select v-model="currentTour.companyId" class="select select-bordered">
+                                        <option v-for="c in masterData.companies" :value="c.id">{{ c.name }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="label py-0"><span class="label-text font-semibold">NBD</span></label>
+                                    <input type="date" v-model="currentTour.startDate" class="input input-bordered w-full">
+                                </div>
+                                <div>
+                                    <label class="label py-0"><span class="label-text font-semibold">NKT</span></label>
+                                    <input type="date" v-model="currentTour.endDate" class="input input-bordered w-full">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                 <div>
+                                    <label class="label py-0"><span class="label-text font-semibold">NL</span></label>
+                                    <div class="join w-full">
+                                        <button @click="currentTour.paxAdult = Math.max(0, currentTour.paxAdult - 1)" class="btn join-item">-</button>
+                                        <input type="text" v-model.number="currentTour.paxAdult" class="input input-bordered join-item text-center w-full">
+                                        <button @click="currentTour.paxAdult++" class="btn join-item">+</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="label py-0"><span class="label-text font-semibold">TE</span></label>
+                                    <div class="join w-full">
+                                        <button @click="currentTour.paxChild = Math.max(0, currentTour.paxChild - 1)" class="btn join-item">-</button>
+                                        <input type="text" v-model.number="currentTour.paxChild" class="input input-bordered join-item text-center w-full">
+                                        <button @click="currentTour.paxChild++" class="btn join-item">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                             <div>
+                                <label class="label py-0"><span class="label-text font-semibold">GC</span></label>
+                                <input type="text" v-model="currentTour.notes" class="input input-bordered">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 1. CP Vé -->
+                    <div class="form-section">
+                        <div class="card-body">
+                            <h3 class="card-title">1. CP Vé</h3>
+                            <div class="flex flex-col sm:flex-row gap-3 mb-4 items-end">
+                                <div class="w-full flex-1">
+                                    <label class="label"><span class="label-text font-semibold">Tỉnh</span></label>
+                                    <select class="select select-bordered w-full" v-model="ticketForm.provinceId" @change="ticketForm.locationId = ''">
+                                        <option value="">-- Chọn tỉnh --</option>
+                                        <option v-for="p in sortedProvinces" :value="p.id">{{ p.name }}</option>
+                                    </select>
+                                </div>
+                                <div class="w-full flex-1">
+                                    <label class="label"><span class="label-text font-semibold">Đ.Điểm</span></label>
+                                    <select class="select select-bordered w-full" v-model="ticketForm.locationId">
+                                        <option value="">-- Chọn địa điểm --</option>
+                                        <option v-for="l in filteredLocations" :value="l.id">{{ l.name }}</option>
+                                    </select>
+                                </div>
+                                <button @click="addTicket" class="btn btn-secondary w-full sm:w-auto">Thêm</button>
+                            </div>
+                            <div class="divider"></div>
+                            <div class="overflow-x-auto">
+                                <table class="table table-sm w-full">
+                                    <thead>
+                                        <tr>
+                                            <th class="w-2/5">Tên</th>
+                                            <th class="w-1/5 text-center">SL</th>
+                                            <th class="w-1/5 text-right">ĐG</th>
+                                            <th class="w-1/5 text-right">TT</th>
+                                            <th class="w-auto text-right"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="(ticket, index) in currentTour.tickets" :key="ticket.locationId">
+                                            <td class="font-semibold">Vé: {{ getLocationName(ticket.locationId) }}</td>
+                                            <td class="text-center">{{ totalPax }}</td>
+                                            <td class="text-right font-mono">{{ formatCurrencyWithK(getLocationPrice(ticket.locationId)) }}</td>
+                                            <td class="text-right font-mono">{{ formatCurrencyWithK(getLocationPrice(ticket.locationId) * totalPax) }}</td>
+                                            <td class="text-right">
+                                                <button @click="currentTour.tickets.splice(index, 1)" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-times"></i></button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="text-right font-bold mt-3 text-lg">Tổng Vé: {{ formatCurrency(totalTicketCost) }}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 2. CP Vận Hành -->
+                    <div class="form-section">
+                        <div class="card-body">
+                            <h3 class="card-title">2. CP Vận Hành</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 mb-4 items-end">
+                                <div class="sm:col-span-5">
+                                    <label class="label"><span class="label-text font-semibold">Chọn CP</span></label>
+                                    <select class="select select-bordered w-full" v-model="serviceForm.detailedExpenseId">
+                                        <option value="">-- Chọn từ danh sách --</option>
+                                        <option v-for="s in masterData.detailedExpenses" :value="s.id">{{ s.name }} ({{formatCurrencyWithK(s.amount)}})</option>
+                                    </select>
+                                </div>
+                                <div class="sm:col-span-3">
+                                    <label class="label"><span class="label-text font-semibold">SL</span></label>
+                                    <div class="join w-full">
+                                        <button @click="serviceForm.quantity = Math.max(1, serviceForm.quantity - 1)" class="btn join-item">-</button>
+                                        <input type="text" v-model.number="serviceForm.quantity" class="input input-bordered join-item text-center w-full">
+                                        <button @click="serviceForm.quantity++" class="btn join-item">+</button>
+                                    </div>
+                                </div>
+                                <div class="sm:col-span-4">
+                                    <button @click="addOperatingCost" class="btn btn-secondary w-full">Thêm CP</button>
+                                </div>
+                            </div>
+                            <div class="divider"></div>
+                            
+                            <div class="overflow-x-auto">
+                                <table class="table table-sm w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Tên</th>
+                                            <th class="text-center">SL</th>
+                                            <th class="text-right">ĐG</th>
+                                            <th class="text-right">TT</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody v-for="(item, index) in currentTour.operatingCosts" :key="item.id">
+                                        <tr class="tour-list-row">
+                                            <td class="font-semibold">{{ getDetailedExpenseName(item.detailedExpenseId) }}</td>
+                                            <td class="text-center">
+                                                <div class="join justify-center">
+                                                    <button @click="item.quantity = Math.max(1, item.quantity - 1)" class="btn btn-xs join-item">-</button>
+                                                    <input type="text" v-model.number="item.quantity" class="input input-xs input-bordered join-item w-12 text-center">
+                                                    <button @click="item.quantity++" class="btn btn-xs join-item">+</button>
+                                                </div>
+                                            </td>
+                                            <td class="text-right font-mono">{{ formatCurrencyWithK(item.price) }}</td>
+                                            <td class="text-right font-mono">{{ formatCurrencyWithK(item.price * item.quantity) }}</td>
+                                        </tr>
+                                        <tr class="action-row">
+                                            <td colspan="4" class="p-1">
+                                                <div class="flex justify-end space-x-1">
+                                                    <button @click="copyOperatingCost(item, index)" class="btn btn-ghost btn-xs btn-circle" title="Sao chép"><i class="fas fa-copy"></i></button>
+                                                    <button @click="currentTour.operatingCosts.splice(index, 1)" class="btn btn-ghost btn-xs btn-circle text-error" title="Xóa"><i class="fas fa-times"></i></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="divider"></div>
+                            <div class="text-right font-bold text-lg">Tổng CPVH: {{ formatCurrency(totalOperatingCost) }}</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- 3. Phát sinh -->
+                        <div class="form-section">
+                            <div class="card-body">
+                                <h3 class="card-title">3. PS</h3>
+                                <div v-for="(item, index) in currentTour.incidentals" :key="item.id" class="space-y-2">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <input type="text" v-model="item.name" placeholder="Tên PS" class="input input-bordered input-sm col-span-2">
+                                        <input type="text" @input="formatInputCurrency($event, item, 'amount')" :value="formatCurrency(item.amount)" placeholder="Số tiền" class="input input-bordered col-span-1 text-right input-sm">
+                                        <input type="text" v-model="item.notes" placeholder="Ghi chú" class="input input-bordered col-span-1 input-sm">
+                                    </div>
+                                    <div class="text-right">
+                                        <button @click="copyIncidental(item, index)" class="btn btn-ghost btn-xs btn-circle" title="Sao chép"><i class="fas fa-copy"></i></button>
+                                        <button @click="currentTour.incidentals.splice(index, 1)" class="btn btn-ghost btn-xs btn-circle text-error" title="Xóa"><i class="fas fa-times"></i></button>
+                                    </div>
+                                </div>
+                                <button @click="currentTour.incidentals.push({ id: Date.now(), name: '', amount: 0, notes: '' })" class="btn btn-secondary mt-2">
+                                    <i class="fas fa-plus mr-2"></i> Thêm PS
+                                </button>
+                                <div class="divider"></div>
+                                <div class="text-right font-bold text-lg">Tổng PS: {{ formatCurrency(totalIncidentalCost) }}</div>
+                            </div>
+                        </div>
+                        <!-- 4. Công tác phí -->
+                         <div class="form-section">
+                             <div class="card-body">
+                                <h3 class="card-title">4. CTP</h3>
+                                <div v-if="workDaysExceeded" class="alert alert-warning text-xs p-2">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <span>Cảnh báo: Tổng ngày CTP > ngày tour.</span>
+                                </div>
+                                <div class="space-y-4 mt-2">
+                                    <div class="grid grid-cols-2 gap-4 items-center">
+                                        <label class="label"><span class="label-text font-semibold">CTN (QB)</span></label>
+                                        <div class="join">
+                                            <button @click="currentTour.fees.workDaysQB = Math.max(0, currentTour.fees.workDaysQB - 1)" class="btn btn-sm join-item">-</button>
+                                            <input type="text" v-model.number="currentTour.fees.workDaysQB" class="input input-sm input-bordered join-item w-full text-center">
+                                            <button @click="currentTour.fees.workDaysQB++" class="btn btn-sm join-item" :disabled="totalWorkDays >= tourDuration">+</button>
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-4 items-center">
+                                        <label class="label"><span class="label-text font-semibold">CTN (Khác)</span></label>
+                                        <div class="join">
+                                            <button @click="currentTour.fees.workDaysOther = Math.max(0, currentTour.fees.workDaysOther - 1)" class="btn btn-sm join-item">-</button>
+                                            <input type="text" v-model.number="currentTour.fees.workDaysOther" class="input input-sm input-bordered join-item w-full text-center">
+                                            <button @click="currentTour.fees.workDaysOther++" class="btn btn-sm join-item" :disabled="totalWorkDays >= tourDuration">+</button>
+                                        </div>
+                                    </div>
+                                     <div class="grid grid-cols-2 gap-4 items-center">
+                                        <label class="label"><span class="label-text font-semibold">Lưu Đêm</span></label>
+                                        <div class="join">
+                                            <button @click="currentTour.fees.overnightStays = Math.max(0, currentTour.fees.overnightStays - 1)" class="btn btn-sm join-item">-</button>
+                                            <input type="text" v-model.number="currentTour.fees.overnightStays" class="input input-sm input-bordered join-item w-full text-center">
+                                            <button @click="currentTour.fees.overnightStays++" class="btn btn-sm join-item">+</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="divider"></div>
+                                <div class="text-right font-bold text-lg">Tổng CTP: {{ formatCurrency(totalFeeCost) }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5. Tạm ứng / Thu hộ -->
+                    <div class="form-section lg:col-span-2">
+                        <div class="card-body">
+                            <h3 class="card-title">5. TƯ/TH</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="label"><span class="label-text font-semibold">TƯ</span></label>
+                                    <input type="text" @input="formatInputCurrency($event, currentTour.payment, 'advance')" :value="formatCurrency(currentTour.payment.advance)" class="input input-bordered text-right">
+                                </div>
+                                <div>
+                                    <label class="label"><span class="label-text font-semibold">TH Cty</span></label>
+                                    <input type="text" @input="formatInputCurrency($event, currentTour.payment, 'collect')" :value="formatCurrency(currentTour.payment.collect)" class="input input-bordered text-right">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6. Tổng kết -->
+                    <div class="form-section bg-neutral text-neutral-content lg:col-span-2">
+                        <div class="card-body">
+                            <h3 class="card-title text-accent">6. T.KẾT</h3>
+                            <div class="stats stats-vertical shadow w-full">
+                              <div class="stat">
+                                <div class="stat-title">Tổng CP</div>
+                                <div class="stat-value font-mono">{{ formatCurrency(grandTotal) }}</div>
+                              </div>
+                              <div class="stat">
+                                <div class="stat-title">Sau TƯ</div>
+                                <div class="stat-value font-mono">{{ formatCurrency(balanceAfterAdvance) }}</div>
+                              </div>
+                              <div class="stat">
+                                <div class="stat-title">Sau TH</div>
+                                <div class="stat-value font-mono">{{ formatCurrency(balanceAfterCollection) }}</div>
+                              </div>
+                               <div class="stat">
+                                <div class="stat-title text-xl" :class="finalSettlement >= 0 ? 'text-success' : 'text-error'">{{ finalSettlement >= 0 ? 'HDV Hoàn Lại' : 'CTY Trả Thêm' }}</div>
+                                <div class="stat-value text-2xl font-mono" :class="finalSettlement >= 0 ? 'text-success' : 'text-error'">{{ formatCurrency(Math.abs(finalSettlement)) }}</div>
+                              </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sticky Footer for Actions -->
+                    <div class="sticky-footer flex justify-end space-x-3">
+                        <button @click="currentTour = null" class="btn">Hủy</button>
+                        <button @click="saveTour" class="btn btn-primary"><i class="fas fa-save mr-2"></i>Lưu</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DATA MANAGEMENT VIEW -->
+        <div v-if="activeTab === 'data'">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                
+                <div class="card bg-base-100 shadow-lg border border-base-200">
+                    <div class="card-body p-5">
+                        <h3 class="card-title">I. DS Tỉnh</h3>
+                        <div class="flex gap-2 mb-3">
+                            <input type="text" v-model="newItems.province" @keyup.enter="addMasterDataItem('provinces', {name: newItems.province})" placeholder="Tên tỉnh mới" class="input input-bordered flex-grow">
+                            <button @click="addMasterDataItem('provinces', {name: newItems.province})" class="btn btn-primary flex-shrink-0">Thêm</button>
+                        </div>
+                         <div class="overflow-x-auto max-h-60">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Tên</th>
+                                        <th class="text-right"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in masterData.provinces" :key="item.id" class="hover">
+                                        <th>{{ item.id }}</th>
+                                        <td>
+                                            <span v-if="editingItem?.id !== item.id">{{ item.name }}</span>
+                                            <input v-else type="text" v-model="editingItem.text" @keyup.enter="saveEdit" @keyup.esc="cancelEdit" class="input input-xs input-bordered w-full">
+                                        </td>
+                                        <td class="text-right">
+                                            <button v-if="editingItem?.id !== item.id" @click="startEditing(item, 'provinces')" class="btn btn-ghost btn-xs btn-circle"><i class="fas fa-pencil-alt"></i></button>
+                                            <button v-if="editingItem?.id === item.id" @click="saveEdit" class="btn btn-ghost btn-xs btn-circle text-success"><i class="fas fa-check"></i></button>
+                                            <button v-if="editingItem?.id === item.id" @click="cancelEdit" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-times"></i></button>
+                                            <button @click="deleteMasterDataItem('provinces', item.id)" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-trash-alt"></i></button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                         <div class="divider">Import</div>
+                        <textarea v-model="pasteTexts.provinces" class="textarea textarea-bordered h-24" placeholder="Dán danh sách tỉnh tại đây, mỗi tỉnh một dòng..."></textarea>
+                        <button @click="importFromPastedText('provinces')" class="btn btn-secondary mt-2 w-full">Import</button>
+                    </div>
+                </div>
+
+                <div class="card bg-base-100 shadow-lg border border-base-200 lg:col-span-2">
+                    <div class="card-body p-5">
+                        <h3 class="card-title">II. DS Địa Điểm</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3 items-end">
+                            <div class="sm:col-span-2">
+                                <label class="label"><span class="label-text text-xs">Tên ĐĐ</span></label>
+                                <input type="text" v-model="newItems.location.name" placeholder="VD: Đại Nội Huế" class="input input-bordered">
+                            </div>
+                            <div>
+                                <label class="label"><span class="label-text text-xs">Tỉnh</span></label>
+                                <select v-model="newItems.location.provinceId" class="select select-bordered">
+                                    <option value="">-- Chọn tỉnh --</option>
+                                    <option v-for="p in masterData.provinces" :value="p.id">{{ p.name }}</option>
+                                </select>
+                            </div>
+                            <div class="flex gap-2">
+                                <div class="flex-grow">
+                                    <label class="label"><span class="label-text text-xs">Giá vé</span></label>
+                                    <input type="text" @input="formatInputCurrency($event, newItems.location, 'price')" placeholder="Bắt buộc" class="input input-bordered">
+                                </div>
+                                <button @click="addMasterDataItem('locations', newItems.location)" class="btn btn-primary self-end">Thêm</button>
+                            </div>
+                        </div>
+                        <div class="divider"></div>
+                        <div class="overflow-x-auto max-h-60">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Tên</th>
+                                        <th>Tỉnh</th>
+                                        <th class="text-right">Giá vé</th>
+                                        <th class="text-right"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in sortedLocations" :key="item.id" class="hover">
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ getProvinceName(item.provinceId) }}</td>
+                                        <td class="text-right font-mono">{{ formatCurrencyWithK(item.price) }}</td>
+                                        <td class="text-right">
+                                            <button @click="copyMasterDataItem(item, 'locations')" class="btn btn-ghost btn-xs btn-circle" title="Sao chép"><i class="fas fa-copy"></i></button>
+                                            <button @click="openEditModal(item, 'locations')" class="btn btn-ghost btn-xs btn-circle"><i class="fas fa-pencil-alt"></i></button>
+                                            <button @click="deleteMasterDataItem('locations', item.id)" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-trash-alt"></i></button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="divider">Import</div>
+                        <textarea v-model="pasteTexts.locations" class="textarea textarea-bordered h-24" placeholder="Dán danh sách địa điểm tại đây. Định dạng: Tên,Mã Tỉnh,Giá vé"></textarea>
+                        <button @click="importFromPastedText('locations')" class="btn btn-secondary mt-2 w-full">Import</button>
+                    </div>
+                </div>
+
+                <div class="card bg-base-100 shadow-lg border border-base-200">
+                    <div class="card-body p-5">
+                        <h3 class="card-title">III. DS Loại Chi Phí</h3>
+                        <div class="flex gap-2 mb-3">
+                            <input type="text" v-model="newItems.expenseType" @keyup.enter="addMasterDataItem('expenseTypes', {name: newItems.expenseType})" placeholder="Tên loại chi phí mới" class="input input-bordered flex-grow">
+                            <button @click="addMasterDataItem('expenseTypes', {name: newItems.expenseType})" class="btn btn-primary flex-shrink-0">Thêm</button>
+                        </div>
+                        <div class="overflow-x-auto max-h-60">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Tên</th>
+                                        <th class="text-right"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in masterData.expenseTypes" :key="item.id" class="hover">
+                                        <th>{{ item.id }}</th>
+                                        <td>
+                                            <span v-if="editingItem?.id !== item.id">{{ item.name }}</span>
+                                            <input v-else type="text" v-model="editingItem.text" @keyup.enter="saveEdit" @keyup.esc="cancelEdit" class="input input-xs input-bordered w-full">
+                                        </td>
+                                        <td class="text-right">
+                                            <button v-if="editingItem?.id !== item.id" @click="startEditing(item, 'expenseTypes')" class="btn btn-ghost btn-xs btn-circle"><i class="fas fa-pencil-alt"></i></button>
+                                            <button v-if="editingItem?.id === item.id" @click="saveEdit" class="btn btn-ghost btn-xs btn-circle text-success"><i class="fas fa-check"></i></button>
+                                            <button v-if="editingItem?.id === item.id" @click="cancelEdit" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-times"></i></button>
+                                            <button @click="deleteMasterDataItem('expenseTypes', item.id)" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-trash-alt"></i></button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                         <div class="divider">Import</div>
+                        <textarea v-model="pasteTexts.expenseTypes" class="textarea textarea-bordered h-24" placeholder="Dán danh sách loại chi phí tại đây, mỗi loại một dòng..."></textarea>
+                        <button @click="importFromPastedText('expenseTypes')" class="btn btn-secondary mt-2 w-full">Import</button>
+                    </div>
+                </div>
+
+                <div class="card bg-base-100 shadow-lg border border-base-200 lg:col-span-2">
+                    <div class="card-body p-5">
+                        <h3 class="card-title">IV. DS Chi Phí Chi Tiết</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3 items-end">
+                            <div class="sm:col-span-2">
+                                <label class="label"><span class="label-text text-xs">Tên CP</span></label>
+                                <input type="text" v-model="newItems.detailedExpense.name" placeholder="VD: Ăn trưa, Nước uống" class="input input-bordered">
+                            </div>
+                            <div>
+                                <label class="label"><span class="label-text text-xs">Loại CP</span></label>
+                                <select v-model="newItems.detailedExpense.expenseTypeId" class="select select-bordered">
+                                    <option value="">-- Chọn loại --</option>
+                                    <option v-for="et in masterData.expenseTypes" :value="et.id">{{ et.name }}</option>
+                                </select>
+                            </div>
+                            <div class="flex gap-2">
+                                 <div class="flex-grow">
+                                    <label class="label"><span class="label-text text-xs">Số tiền</span></label>
+                                    <input type="text" @input="formatInputCurrency($event, newItems.detailedExpense, 'amount')" placeholder="Bắt buộc" class="input input-bordered">
+                                </div>
+                                <button @click="addMasterDataItem('detailedExpenses', newItems.detailedExpense)" class="btn btn-primary self-end">Thêm</button>
+                            </div>
+                        </div>
+                        <div class="divider"></div>
+                        <div class="overflow-x-auto max-h-60">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Tên</th>
+                                        <th>Loại</th>
+                                        <th class="text-right">Số tiền</th>
+                                        <th class="text-right"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in masterData.detailedExpenses" :key="item.id" class="hover">
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ getExpenseTypeName(item.expenseTypeId) }}</td>
+                                        <td class="text-right font-mono">{{ formatCurrencyWithK(item.amount) }}</td>
+                                        <td class="text-right">
+                                            <button @click="copyMasterDataItem(item, 'detailedExpenses')" class="btn btn-ghost btn-xs btn-circle" title="Sao chép"><i class="fas fa-copy"></i></button>
+                                            <button @click="openEditModal(item, 'detailedExpenses')" class="btn btn-ghost btn-xs btn-circle"><i class="fas fa-pencil-alt"></i></button>
+                                            <button @click="deleteMasterDataItem('detailedExpenses', item.id)" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-trash-alt"></i></button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="divider">Import</div>
+                        <textarea v-model="pasteTexts.detailedExpenses" class="textarea textarea-bordered h-24" placeholder="Dán danh sách chi phí tại đây. Định dạng: Tên,Mã Loại,Số tiền"></textarea>
+                        <button @click="importFromPastedText('detailedExpenses')" class="btn btn-secondary mt-2 w-full">Import</button>
+                    </div>
+                </div>
+
+                <div class="card bg-base-100 shadow-lg border border-base-200">
+                    <div class="card-body p-5">
+                        <h3 class="card-title">V. DS Công Ty</h3>
+                        <div class="flex gap-2 mb-3">
+                            <input type="text" v-model="newItems.company" @keyup.enter="addMasterDataItem('companies', {name: newItems.company})" placeholder="Tên công ty mới" class="input input-bordered flex-grow">
+                            <button @click="addMasterDataItem('companies', {name: newItems.company})" class="btn btn-primary flex-shrink-0">Thêm</button>
+                        </div>
+                        <div class="overflow-x-auto max-h-60">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Tên</th>
+                                        <th class="text-right"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in masterData.companies" :key="item.id" class="hover">
+                                        <th>{{ item.id }}</th>
+                                        <td>
+                                            <span v-if="editingItem?.id !== item.id">{{ item.name }}</span>
+                                            <input v-else type="text" v-model="editingItem.text" @keyup.enter="saveEdit" @keyup.esc="cancelEdit" class="input input-xs input-bordered w-full">
+                                        </td>
+                                        <td class="text-right">
+                                            <button v-if="editingItem?.id !== item.id" @click="startEditing(item, 'companies')" class="btn btn-ghost btn-xs btn-circle"><i class="fas fa-pencil-alt"></i></button>
+                                            <button v-if="editingItem?.id === item.id" @click="saveEdit" class="btn btn-ghost btn-xs btn-circle text-success"><i class="fas fa-check"></i></button>
+                                            <button v-if="editingItem?.id === item.id" @click="cancelEdit" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-times"></i></button>
+                                            <button @click="deleteMasterDataItem('companies', item.id)" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-trash-alt"></i></button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="divider">Import</div>
+                        <textarea v-model="pasteTexts.companies" class="textarea textarea-bordered h-24" placeholder="Dán danh sách công ty tại đây, mỗi công ty một dòng..."></textarea>
+                        <button @click="importFromPastedText('companies')" class="btn btn-secondary mt-2 w-full">Import</button>
+                    </div>
+                </div>
+                
+                <div class="card bg-base-100 shadow-lg border border-base-200">
+                    <div class="card-body p-5">
+                        <h3 class="card-title">VI. DS Quốc Tịch</h3>
+                        <div class="flex gap-2 mb-3">
+                            <input type="text" v-model="newItems.nationality" @keyup.enter="addMasterDataItem('nationalities', {name: newItems.nationality})" placeholder="Tên quốc tịch mới" class="input input-bordered flex-grow">
+                            <button @click="addMasterDataItem('nationalities', {name: newItems.nationality})" class="btn btn-primary flex-shrink-0">Thêm</button>
+                        </div>
+                        <div class="overflow-x-auto max-h-60">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Tên</th>
+                                        <th class="text-right"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="item in masterData.nationalities" :key="item.id" class="hover">
+                                        <th>{{ item.id }}</th>
+                                        <td>
+                                            <span v-if="editingItem?.id !== item.id">{{ item.name }}</span>
+                                            <input v-else type="text" v-model="editingItem.text" @keyup.enter="saveEdit" @keyup.esc="cancelEdit" class="input input-xs input-bordered w-full">
+                                        </td>
+                                        <td class="text-right">
+                                            <button v-if="editingItem?.id !== item.id" @click="startEditing(item, 'nationalities')" class="btn btn-ghost btn-xs btn-circle"><i class="fas fa-pencil-alt"></i></button>
+                                            <button v-if="editingItem?.id === item.id" @click="saveEdit" class="btn btn-ghost btn-xs btn-circle text-success"><i class="fas fa-check"></i></button>
+                                            <button v-if="editingItem?.id === item.id" @click="cancelEdit" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-times"></i></button>
+                                            <button @click="deleteMasterDataItem('nationalities', item.id)" class="btn btn-ghost btn-xs btn-circle text-error"><i class="fas fa-trash-alt"></i></button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                         <div class="divider">Import</div>
+                        <textarea v-model="pasteTexts.nationalities" class="textarea textarea-bordered h-24" placeholder="Dán danh sách quốc tịch tại đây, mỗi quốc tịch một dòng..."></textarea>
+                        <button @click="importFromPastedText('nationalities')" class="btn btn-secondary mt-2 w-full">Import</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <dialog id="edit_modal" class="modal">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg">Sửa thông tin</h3>
+            
+            <div v-if="editModal.target === 'locations'" class="py-4 space-y-4">
+                 <div>
+                    <label class="label"><span class="label-text font-semibold">Tên địa điểm</span></label>
+                    <input type="text" v-model="editModal.data.name" class="input input-bordered w-full">
+                </div>
+                <div>
+                    <label class="label"><span class="label-text font-semibold">Tỉnh</span></label>
+                    <select v-model="editModal.data.provinceId" class="select select-bordered w-full">
+                        <option v-for="p in masterData.provinces" :value="p.id">{{ p.name }}</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="label"><span class="label-text font-semibold">Giá vé</span></label>
+                    <input type="text" :value="formatCurrency(editModal.data.price)" @input="formatInputCurrency($event, editModal.data, 'price')" class="input input-bordered w-full">
+                </div>
+            </div>
+            
+            <div v-if="editModal.target === 'detailedExpenses'" class="py-4 space-y-4">
+                 <div>
+                    <label class="label"><span class="label-text font-semibold">Tên chi phí</span></label>
+                    <input type="text" v-model="editModal.data.name" class="input input-bordered w-full">
+                </div>
+                <div>
+                    <label class="label"><span class="label-text font-semibold">Loại chi phí</span></label>
+                    <select v-model="editModal.data.expenseTypeId" class="select select-bordered w-full">
+                        <option v-for="et in masterData.expenseTypes" :value="et.id">{{ et.name }}</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="label"><span class="label-text font-semibold">Số tiền</span></label>
+                    <input type="text" :value="formatCurrency(editModal.data.amount)" @input="formatInputCurrency($event, editModal.data, 'amount')" class="input input-bordered w-full">
+                </div>
+            </div>
+
+            <div class="modal-action">
+                <form method="dialog" class="w-full flex justify-between">
+                    <button class="btn">Đóng</button>
+                    <button @click.prevent="saveEditModal" class="btn btn-primary">Lưu thay đổi</button>
+                </form>
+            </div>
+        </div>
+    </dialog>
+
+    <script src="script.js"></script>
+</body>
+</html>

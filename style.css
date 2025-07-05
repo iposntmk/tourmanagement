@@ -1,0 +1,16 @@
+body {
+    font-family: 'Be Vietnam Pro', sans-serif;
+}
+/* Minor adjustments to DaisyUI components if needed */
+.form-section { @apply card bg-base-100 shadow-lg border border-base-200 mb-6; }
+.form-section .card-body { @apply p-4 sm:p-5; }
+.sticky-header { @apply sticky top-0 z-40 bg-base-100/90 backdrop-blur-lg shadow-md; }
+.sticky-footer { @apply sticky bottom-0 z-30 bg-base-100/95 backdrop-blur-lg border-t p-4; }
+.tour-list-row td {
+    border-bottom-width: 0 !important;
+    padding-bottom: 0.25rem !important;
+}
+.action-row td {
+    padding-top: 0 !important;
+    padding-bottom: 0.75rem !important;
+}
